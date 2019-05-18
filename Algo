@@ -1,0 +1,114 @@
+#!/usr/bin/env python
+# -*- coding: latin-1 -*-
+ 
+import RPi.GPIO as GPIO, time, os
+import math
+
+Rth0 = 10000.0          #Resistenza sonda a 25°
+pB = 3435.0             #Fattore B sonda
+K = 3.0                 #Fattore K dissipazione sonda
+VIN = 3.3               #Tensione alimentazione
+T = 30.0                #Temperatura obiettivo
+Tciclo = 3.0            #Tempo ciclo tra le letture temperatura in secondi
+Cont = 1                #Definisce la successione delle letture
+Output = 90.0           #Imposta al massimo all'inizio
+PrimoDato = 'V'         #Imposta su Vero il primo dato
+Algo = 0.0              #Resetta il calcolo dell'algoritmo
+
+DEBUG = 1
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(18, GPIO.OUT)        #Imposta la porta per il servo
+pwm = GPIO.PWM(18, 50)          #Imposta la frequenza per il servo
+pwm.start(3.0)                  #Imposta il punto di partenza del servo
+
+#Questa parte definisce la resistenza (da sostituire con ADC)
+def RCtime (RCpin):
+        reading = 0
+        GPIO.setup(RCpin, GPIO.OUT)
+        GPIO.output(RCpin, GPIO.LOW)
+        time.sleep(Tciclo)
+ 
+        GPIO.setup(RCpin, GPIO.IN)
+        # This takes about 1 millisecond per loop cycle
+        while (GPIO.input(RCpin) == GPIO.LOW):
+                reading += 10
+        return reading
+ 
+while True:                                     
+
+        if Cont == 1:
+                Rth = RCtime(19)
+                RRo = (Rth/Rth0)
+                logRRo = math.log(RRo)
+                parB = 1.0/((1.0/298.15)+(logRRo/pB))
+                V = (Rth*VIN)/(Rth0+Rth)
+                Celsius = round (parB-273.15-V**2/(K*Rth),2)        
+                Cont = 0
+                if PrimoDato == 'F':
+                        breale = Celsius - Celsius1
+                        areale = Tciclo
+                        alfareale = math.degrees(math.atan(breale/areale))
+                        brotta = T - Celsius
+                        arotta = Tciclo
+                        alfarotta = math.degrees(math.atan(brotta/arotta))
+                        Deriva = alfarotta1-alfareale
+                        Algo = alfarotta + Deriva + Scarroccio1
+                        if Algo > 90.0:
+                                Output = 90.0
+                                Scarroccio = Output - alfarotta
+                                duty = 3.0 + ((8.3/180.0)* float(Output))
+                                pwm.ChangeDutyCycle(duty)
+                        else:
+                                if Algo <= 0.0:
+                                        Output = 1
+                                        Scarroccio = Output - alfarotta
+                                        duty = 3.0 + ((8.3/180.0)* float(Output))
+                                        pwm.ChangeDutyCycle(duty)
+                                else:
+                                        Output = Algo
+                                        Scarroccio = Output - alfarotta
+                                        duty = 3.0 + ((8.3/180.0)* float(Output))
+                                        pwm.ChangeDutyCycle(duty)
+                else: #Primo Dato registrato
+                        PrimoDato = 'F'
+                        brotta = T - Celsius
+                        arotta = Tciclo
+                        alfarotta = math.degrees(math.atan(brotta/arotta))
+                        Scarroccio = Output - alfarotta
+                        duty = 3.0 + ((8.3/180.0)* float(Output))
+                        pwm.ChangeDutyCycle(duty)
+                print Rth,Celsius,Cont,Output
+        
+        else:
+                Rth1 = RCtime(19)
+                RRo1 = (Rth1/Rth0)
+                logRRo1 = math.log(RRo1)
+                parB1 = 1.0/((1.0/298.15)+(logRRo1/pB))
+                V1 = (Rth1*VIN)/(Rth0+Rth1)
+                Celsius1 = round (parB1-273.15-V1**2/(K*Rth1),2)        
+                Cont = 1
+                breale1 = Celsius1 - Celsius
+                areale1 = Tciclo
+                alfareale1 = math.degrees(math.atan(breale1/areale1))
+                brotta1 = T - Celsius1
+                arotta1 = Tciclo
+                alfarotta1 = math.degrees(math.atan(brotta1/arotta1))
+                Deriva1 = alfarotta - alfareale1
+                Algo = alfarotta1 + Deriva1 + Scarroccio
+                if Algo > 90.0:
+                        Output = 90.0
+                        Scarroccio1 = Output - alfarotta1
+                        duty = 3.0 + ((8.3/180.0)* float(Output))
+                        pwm.ChangeDutyCycle(duty)
+                else:
+                        if Algo <= 0.0:
+                                Output = 1
+                                Scarroccio1 = Output - alfarotta1
+                                duty = 3.0 + ((8.3/180.0)* float(Output))
+                                pwm.ChangeDutyCycle(duty)
+                        else:
+                                Output = Algo
+                                Scarroccio1 = Output - alfarotta1
+                                duty = 3.0 + ((8.3/180.0)* float(Output))
+                                pwm.ChangeDutyCycle(duty)
+                print Rth1,Celsius1,Cont,Output
