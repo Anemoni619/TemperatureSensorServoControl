@@ -1,0 +1,131 @@
+#!/usr/bin/env python
+# -*- coding: latin-1 -*-
+
+import RPi.GPIO as GPIO, time, os
+import math
+import serial
+
+ser = serial.Serial ("/dev/ttyAMA0") # apre la porta seriale del Display
+ser.baudrate = 9600 #setta la baud rate per il Display
+Rth0 = 10000.0      #Resistenza sonda a 25°
+pB = 3435.0         #Fattore B sonda
+K = 3.0             #Fattore K dissipazione sonda
+VIN = 3.3           #Tensione alimentazione
+TObj = 80.0         #Temperatura obiettivo
+Tciclo = 0.5        #Tempo ciclo tra le letture temperatura in secondi
+Scatto = 1.0        #Movimento servo
+Servo = 90.0        #Imposta a manetta all'inizio
+duty = 0.0
+TempFut = 0.0       #varibile temperatura futura prevista
+Pendenza = 0.0      #Pendenza andamento temperature medie
+listRes = []        #lista lettura resistenze
+listTemp = []       #lista ultime 30 temperature
+listMedi = []       #lista ultime 10 medie per calcolo pendenza
+
+GPIO.cleanup()
+
+DEBUG = 1
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(4, GPIO.OUT)    #Imposta la porta per il servo
+GPIO.setup(6, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(5, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+pwm = GPIO.PWM(4, 50)      #Imposta la frequenza per il servo
+pwm.start(3.0)             #Imposta il punto di partenza del servo
+
+ser.close()
+ser.open()
+ser.flush()
+Display = "CIAO" 
+ser.write(Display)
+out_file = open("test.txt","w")
+
+def RCtime (RCpin):     #Lettura Resistenza
+    listRes = []
+    for i in range (1,11):
+        reading = 0
+        GPIO.setup(RCpin, GPIO.OUT)
+        GPIO.output(RCpin, GPIO.LOW)
+        time.sleep(Tciclo/10)
+        GPIO.setup(RCpin, GPIO.IN)
+        while (GPIO.input(RCpin) == GPIO.LOW):
+            reading += 10
+        listRes.append(reading)
+    return max(listRes)
+
+def Celsius (Res):      #Calcolo gradi
+    RRo = (Res /Rth0)
+    logRRo = math.log(RRo)
+    parB = 1.0/((1.0/298.15)+(logRRo/pB))
+    V = (Res *VIN)/(Rth0+ Res)
+    Celsius = round (parB-273.15-V**2/(K* Res),2)
+    return Celsius
+
+def Stampa(Tem):     #Stampa video e Display cambio temperatura Obj
+    print('Temperatura Obiettivo: ',TObj)
+    Testo=str('Temperatura Obiettivo: '+repr(TObj))
+    out_file.write("\n"+Testo)
+    Display = str(int(TObj)) + str(int (Tem))
+    ser.close()
+    ser.open()
+    ser.flush()
+    ser.write(Display)
+    time.sleep(0.5)
+
+while True:
+    PulsUP = GPIO.input(6)
+    PulsDW = GPIO.input(5)
+    if PulsUP == False :
+        if PulsDW == False :
+            TObj = Temp
+            Stampa(Temp)        
+        else:
+            TObj = TObj + 1.0
+            Stampa(Temp)        
+    else:
+        if PulsDW == False :
+            TObj = TObj - 1.0
+            Stampa(Temp)        
+        else:
+                Resist = RCtime(26)
+                Temp = Celsius (Resist)
+                listTemp.append(Temp)   #aggiunge la lettura alla lista di letture precedenti
+                if len(listTemp)>=31:
+                    del listTemp[0]
+                #Medi = (max(listTemp)-min(listTemp))/2+min(listTemp)  #calcola la media delle ultime 30 letture 
+                Medi = max(listTemp)
+                listMedi.append(Medi)       #agginge la media alla lista delle ultime 10 medie
+                if len(listMedi) >= 11 :
+                    del listMedi[0]
+                    Pendenza = (listMedi[-1] - listMedi[-10])/10
+                else:
+                    lungh = len(listMedi)
+                    Pendenza = (listMedi[-1] - listMedi[-lungh])/lungh
+                TempFut = (Pendenza *90) + Medi
+                ServoOLD =Servo
+                if TempFut < TObj:
+                    Servo = Servo + Scatto
+                elif TempFut > TObj:
+                    Servo = Servo - Scatto
+                if Servo > 90.0:
+                    Servo = 90.0
+                elif Servo < 1.0:
+                    Servo = 1.0
+                if ServoOLD <> Servo: #controlla se ci sono modifiche alla posizione del servo  
+                    duty = 3.0 + ((8.3/180.0)* float(Servo))
+                    pwm.ChangeDutyCycle(duty)
+                print Resist,Temp,Medi,Pendenza,Servo
+                Testo = str(repr(Resist) + ',' + repr(Temp) + ',' + repr(Medi) + ',' + repr(Pendenza) + ',' + repr(Servo))
+                out_file.write("\n"+Testo)
+                Display = str(int(TObj)) + str(int (Temp))
+                ser.close()
+                ser.open()
+                ser.flush()
+                ser.write(Display)
+
+
+
+
+
+
+
+
